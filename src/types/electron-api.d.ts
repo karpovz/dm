@@ -63,7 +63,7 @@ export interface ProductItem {
 }
 
 export interface ProductWritePayload {
-  article: string
+  article?: string
   name: string
   unit: string
   price: number
@@ -74,6 +74,11 @@ export interface ProductWritePayload {
   stockQty: number
   description: string | null
   photo: string | null
+}
+
+export interface ProductImageUploadPayload {
+  dataUrl: string
+  previousPhoto?: string | null
 }
 
 export interface ProductListRequest {
@@ -110,9 +115,21 @@ interface ProductWriteResponse {
   item?: ProductItem
 }
 
+interface ProductGetResponse {
+  ok: boolean
+  message?: string
+  item?: ProductItem
+}
+
 interface ProductDeleteResponse {
   ok: boolean
   message?: string
+}
+
+interface ProductImageUploadResponse {
+  ok: boolean
+  message?: string
+  photo?: string
 }
 
 interface ElectronApi {
@@ -120,9 +137,11 @@ interface ElectronApi {
   listTables: () => Promise<TablesResponse>
   login: (login: string, password: string) => Promise<AuthLoginResponse>
   listProducts: (options?: ProductListRequest) => Promise<ProductListResponse>
-  createProduct: (product: ProductWritePayload) => Promise<ProductWriteResponse>
-  updateProduct: (article: string, product: ProductWritePayload) => Promise<ProductWriteResponse>
-  deleteProduct: (article: string) => Promise<ProductDeleteResponse>
+  getProduct: (article: string) => Promise<ProductGetResponse>
+  createProduct: (product: ProductWritePayload, actorRoleCode?: UserRoleCode) => Promise<ProductWriteResponse>
+  updateProduct: (article: string, product: ProductWritePayload, actorRoleCode?: UserRoleCode) => Promise<ProductWriteResponse>
+  deleteProduct: (article: string, actorRoleCode?: UserRoleCode) => Promise<ProductDeleteResponse>
+  saveProductImage: (payload: ProductImageUploadPayload, actorRoleCode?: UserRoleCode) => Promise<ProductImageUploadResponse>
 }
 
 declare global {

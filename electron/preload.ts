@@ -71,8 +71,31 @@ const api = {
         manufacturers: Array<{ id: number; name: string }>
       }
     }>,
-  createProduct: (product: {
-    article: string
+  getProduct: (article: string) =>
+    ipcRenderer.invoke('products:get', { article }) as Promise<{
+      ok: boolean
+      message?: string
+      item?: {
+        article: string
+        name: string
+        unit: string
+        price: number
+        discountedPrice: number
+        supplierId: number
+        supplierName: string
+        manufacturerId: number
+        manufacturerName: string
+        categoryId: number
+        categoryName: string
+        discountPercent: number
+        stockQty: number
+        description: string | null
+        photo: string | null
+      }
+    }>,
+  createProduct: (
+    product: {
+    article?: string
     name: string
     unit: string
     price: number
@@ -83,8 +106,10 @@ const api = {
     stockQty: number
     description: string | null
     photo: string | null
-  }) =>
-    ipcRenderer.invoke('products:create', product) as Promise<{
+    },
+    actorRoleCode?: string,
+  ) =>
+    ipcRenderer.invoke('products:create', { product, actorRoleCode }) as Promise<{
       ok: boolean
       message?: string
       item?: {
@@ -108,7 +133,7 @@ const api = {
   updateProduct: (
     article: string,
     product: {
-      article: string
+      article?: string
       name: string
       unit: string
       price: number
@@ -120,8 +145,9 @@ const api = {
       description: string | null
       photo: string | null
     },
+    actorRoleCode?: string,
   ) =>
-    ipcRenderer.invoke('products:update', { article, product }) as Promise<{
+    ipcRenderer.invoke('products:update', { article, product, actorRoleCode }) as Promise<{
       ok: boolean
       message?: string
       item?: {
@@ -142,10 +168,16 @@ const api = {
         photo: string | null
       }
     }>,
-  deleteProduct: (article: string) =>
-    ipcRenderer.invoke('products:delete', { article }) as Promise<{
+  deleteProduct: (article: string, actorRoleCode?: string) =>
+    ipcRenderer.invoke('products:delete', { article, actorRoleCode }) as Promise<{
       ok: boolean
       message?: string
+    }>,
+  saveProductImage: (payload: { dataUrl: string; previousPhoto?: string | null }, actorRoleCode?: string) =>
+    ipcRenderer.invoke('products:image:save', { payload, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+      photo?: string
     }>,
 }
 

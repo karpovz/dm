@@ -1,6 +1,6 @@
 .product-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) auto repeat(5, minmax(170px, 1fr)) auto auto;
+  grid-template-columns: minmax(220px, 2fr) repeat(7, minmax(170px, 1fr)) auto;
   gap: 8px;
   align-items: center;
 }
@@ -11,6 +11,10 @@
   display: grid;
   grid-template-columns: 180px 1fr 170px;
   min-height: 170px;
+}
+
+.product-row[role='button'] {
+  cursor: pointer;
 }
 
 .product-row.out-of-stock {

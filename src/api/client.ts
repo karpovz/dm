@@ -14,14 +14,32 @@ export async function listProducts(options?: import('../types/electron-api').Pro
   return window.api.listProducts(options)
 }
 
-export async function createProduct(product: import('../types/electron-api').ProductWritePayload) {
-  return window.api.createProduct(product)
+export async function getProduct(article: string) {
+  return window.api.getProduct(article)
 }
 
-export async function updateProduct(article: string, product: import('../types/electron-api').ProductWritePayload) {
-  return window.api.updateProduct(article, product)
+export async function createProduct(
+  product: import('../types/electron-api').ProductWritePayload,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.createProduct(product, actorRoleCode)
 }
 
-export async function deleteProduct(article: string) {
-  return window.api.deleteProduct(article)
+export async function updateProduct(
+  article: string,
+  product: import('../types/electron-api').ProductWritePayload,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.updateProduct(article, product, actorRoleCode)
+}
+
+export async function deleteProduct(article: string, actorRoleCode?: import('../types/electron-api').UserRoleCode) {
+  return window.api.deleteProduct(article, actorRoleCode)
+}
+
+export async function saveProductImage(
+  payload: import('../types/electron-api').ProductImageUploadPayload,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.saveProductImage(payload, actorRoleCode)
 }

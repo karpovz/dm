@@ -3,27 +3,24 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Empty,
   Flex,
-  Form,
   Image,
   Input,
-  InputNumber,
   Modal,
+  Segmented,
   Pagination,
   Select,
   Space,
   Typography,
   message,
 } from 'antd'
-import { createProduct, deleteProduct, listProducts, updateProduct } from '../api/client'
+import { deleteProduct, listProducts } from '../api/client'
 import type {
   ProductItem,
   ProductListRequest,
   ProductLookupItem,
   ProductSortBy,
-  ProductWritePayload,
   UserRoleCode,
 } from '../types/electron-api'
 import './ProductList.css'
@@ -33,20 +30,9 @@ type ProductListProps = {
   title?: string
   showBackButton?: boolean
   onBack?: () => void
-}
-
-type ProductFormValues = {
-  article: string
-  name: string
-  unit: string
-  price: number
-  supplierId: number
-  manufacturerId: number
-  categoryId: number
-  discountPercent: number
-  stockQty: number
-  description?: string
-  photo?: string
+  onAddProduct?: () => void
+  onEditProduct?: (product: ProductItem) => void
+  refreshToken?: number
 }
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat('ru-RU', {
@@ -56,51 +42,44 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat('ru-RU', {
 })
 
 const SORT_OPTIONS: Array<{ value: ProductSortBy; label: string }> = [
-  { value: 'name', label: 'По наименованию' },
   { value: 'price', label: 'По цене' },
   { value: 'discountPercent', label: 'По скидке' },
   { value: 'stockQty', label: 'По остатку' },
-  { value: 'categoryName', label: 'По категории' },
-  { value: 'supplierName', label: 'По поставщику' },
-  { value: 'manufacturerName', label: 'По производителю' },
 ]
 
-function toNullable(value?: string): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
+type DiscountRangeValue = 'all' | '0-11.99' | '12-18.99' | '19+'
 
-function toWritePayload(values: ProductFormValues): ProductWritePayload {
-  return {
-    article: values.article.trim(),
-    name: values.name.trim(),
-    unit: values.unit.trim(),
-    price: Number(values.price),
-    supplierId: Number(values.supplierId),
-    manufacturerId: Number(values.manufacturerId),
-    categoryId: Number(values.categoryId),
-    discountPercent: Number(values.discountPercent),
-    stockQty: Number(values.stockQty),
-    description: toNullable(values.description),
-    photo: toNullable(values.photo),
+const DISCOUNT_RANGE_OPTIONS: Array<{ value: DiscountRangeValue; label: string }> = [
+  { value: 'all', label: 'Все диапазоны' },
+  { value: '0-11.99', label: '0-11,99%' },
+  { value: '12-18.99', label: '12-18,99%' },
+  { value: '19+', label: '19% и более' },
+]
+
+function mapDiscountRange(range: DiscountRangeValue): Pick<ProductListRequest, 'discountFrom' | 'discountTo'> {
+  switch (range) {
+    case '0-11.99':
+      return { discountFrom: 0, discountTo: 11.99 }
+    case '12-18.99':
+      return { discountFrom: 12, discountTo: 18.99 }
+    case '19+':
+      return { discountFrom: 19, discountTo: undefined }
+    case 'all':
+    default:
+      return { discountFrom: undefined, discountTo: undefined }
   }
 }
 
-function toInitialValues(product: ProductItem): ProductFormValues {
-  return {
-    article: product.article,
-    name: product.name,
-    unit: product.unit,
-    price: product.price,
-    supplierId: product.supplierId,
-    manufacturerId: product.manufacturerId,
-    categoryId: product.categoryId,
-    discountPercent: product.discountPercent,
-    stockQty: product.stockQty,
-    description: product.description ?? '',
-    photo: product.photo ?? '',
-  }
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined
+  const num = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(num) ? num : undefined
+}
+
+function toLookupOption(item: ProductLookupItem): { value: number; label: string } | null {
+  const value = toOptionalNumber(item.id)
+  if (value === undefined) return null
+  return { value, label: item.name }
 }
 
 function getImageSrc(photo: string | null): string {
@@ -125,6 +104,7 @@ function buildImageCandidates(photo: string | null): string[] {
 
   const name = normalized.slice(0, dotIdx)
   const ext = normalized.slice(dotIdx + 1)
+  // Some source files have inconsistent extension casing, so we try all variants before fallback.
   const upperExt = ext.toUpperCase()
   const lowerExt = ext.toLowerCase()
 
@@ -149,7 +129,15 @@ function getRoleName(roleCode: UserRoleCode): string {
   }
 }
 
-export function ProductList({ roleCode, title, showBackButton = false, onBack }: ProductListProps) {
+export function ProductList({
+  roleCode,
+  title,
+  showBackButton = false,
+  onBack,
+  onAddProduct,
+  onEditProduct,
+  refreshToken,
+}: ProductListProps) {
   const [items, setItems] = useState<ProductItem[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -160,19 +148,15 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
   const [query, setQuery] = useState<ProductListRequest>({
     page: 1,
     pageSize: 5,
-    sortBy: 'name',
+    sortBy: 'price',
     sortDir: 'asc',
   })
   const [searchInput, setSearchInput] = useState('')
+  const [discountRange, setDiscountRange] = useState<DiscountRangeValue>('all')
 
-  const [addOpen, setAddOpen] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null)
   const [deletingProduct, setDeletingProduct] = useState<ProductItem | null>(null)
   const [submitLoading, setSubmitLoading] = useState(false)
   const [imageSourceByArticle, setImageSourceByArticle] = useState<Record<string, string>>({})
-
-  const [addForm] = Form.useForm<ProductFormValues>()
-  const [editForm] = Form.useForm<ProductFormValues>()
 
   const canUseFilters = roleCode === 'manager' || roleCode === 'admin'
   const canManage = roleCode === 'admin'
@@ -218,15 +202,15 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
 
   useEffect(() => {
     void loadProducts()
-  }, [loadProducts])
+  }, [loadProducts, refreshToken])
 
   const listTitle = title ?? 'Список товаров'
 
   const roleText = useMemo(() => getRoleName(roleCode), [roleCode])
 
-  const categoryOptions = categories.map((item) => ({ value: item.id, label: item.name }))
-  const supplierOptions = suppliers.map((item) => ({ value: item.id, label: item.name }))
-  const manufacturerOptions = manufacturers.map((item) => ({ value: item.id, label: item.name }))
+  const categoryOptions = categories.map(toLookupOption).filter((item) => item !== null)
+  const supplierOptions = suppliers.map(toLookupOption).filter((item) => item !== null)
+  const manufacturerOptions = manufacturers.map(toLookupOption).filter((item) => item !== null)
 
   const rowClassName = (product: ProductItem): string => {
     if (product.stockQty === 0) {
@@ -238,154 +222,54 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
     return 'product-row'
   }
 
-  const applySearch = () => {
+  useEffect(() => {
     if (!canUseFilters) return
-    setQuery((prev) => ({
-      ...prev,
-      page: 1,
-      search: searchInput.trim() || undefined,
-    }))
-  }
+    const timeoutId = window.setTimeout(() => {
+      setQuery((prev) => ({
+        ...prev,
+        page: 1,
+        search: searchInput.trim() || undefined,
+      }))
+    }, 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [canUseFilters, searchInput])
 
   const resetFilters = () => {
     setSearchInput('')
+    setDiscountRange('all')
     setQuery((prev) => ({
       page: 1,
       pageSize: prev.pageSize,
-      sortBy: 'name',
+      sortBy: prev.sortBy,
       sortDir: 'asc',
       categoryId: undefined,
       supplierId: undefined,
       manufacturerId: undefined,
-      inStockOnly: undefined,
       discountFrom: undefined,
       discountTo: undefined,
       search: undefined,
     }))
   }
 
-  const openCreateModal = () => {
-    addForm.resetFields()
-    addForm.setFieldsValue({
-      article: '',
-      name: '',
-      unit: 'шт.',
-      price: 0,
-      categoryId: undefined,
-      supplierId: undefined,
-      manufacturerId: undefined,
-      discountPercent: 0,
-      stockQty: 0,
-      description: '',
-      photo: '',
-    })
-    setAddOpen(true)
-  }
-
-  const handleCreateSubmit = async () => {
-    try {
-      const values = await addForm.validateFields()
-      setSubmitLoading(true)
-      const response = await createProduct(toWritePayload(values))
-      if (!response.ok) {
-        message.error(response.message ?? 'Не удалось добавить товар')
-        return
-      }
-      setAddOpen(false)
-      message.success('Товар добавлен')
-      await loadProducts()
-    } finally {
-      setSubmitLoading(false)
-    }
-  }
-
-  const openEditModal = (product: ProductItem) => {
-    setEditingProduct(product)
-    editForm.setFieldsValue(toInitialValues(product))
-  }
-
-  const handleEditSubmit = async () => {
-    if (!editingProduct) return
-    try {
-      const values = await editForm.validateFields()
-      setSubmitLoading(true)
-      const response = await updateProduct(editingProduct.article, toWritePayload(values))
-      if (!response.ok) {
-        message.error(response.message ?? 'Не удалось обновить товар')
-        return
-      }
-      setEditingProduct(null)
-      message.success('Товар обновлен')
-      await loadProducts()
-    } finally {
-      setSubmitLoading(false)
-    }
-  }
-
   const handleDelete = async () => {
     if (!deletingProduct) return
     setSubmitLoading(true)
     try {
-      const response = await deleteProduct(deletingProduct.article)
+      const response = await deleteProduct(deletingProduct.article, roleCode)
       if (!response.ok) {
-        message.error(response.message ?? 'Не удалось удалить товар')
+        Modal.error({
+          title: 'Ошибка удаления товара',
+          content: response.message ?? 'Не удалось удалить товар. Проверьте связи товара с заказами.',
+        })
         return
       }
       setDeletingProduct(null)
-      message.success('Товар удален')
+      message.success('Товар удален. Список обновлен.')
       await loadProducts()
     } finally {
       setSubmitLoading(false)
     }
   }
-
-  const renderFormContent = (includeEditableArticle: boolean) => (
-    <Space direction="vertical" size={8} style={{ width: '100%' }}>
-      {includeEditableArticle ? (
-        <Form.Item name="article" label="Артикул" rules={[{ required: true, message: 'Укажите артикул' }]}>
-          <Input placeholder="Например, A112T4" />
-        </Form.Item>
-      ) : null}
-      <Form.Item
-        name="name"
-        label="Наименование товара"
-        rules={[{ required: true, message: 'Укажите наименование товара' }]}
-      >
-        <Input />
-      </Form.Item>
-      <Form.Item name="categoryId" label="Категория" rules={[{ required: true, message: 'Выберите категорию' }]}>
-        <Select options={categoryOptions} placeholder="Выберите категорию" />
-      </Form.Item>
-      <Form.Item name="description" label="Описание товара">
-        <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
-      </Form.Item>
-      <Form.Item
-        name="manufacturerId"
-        label="Производитель"
-        rules={[{ required: true, message: 'Выберите производителя' }]}
-      >
-        <Select options={manufacturerOptions} placeholder="Выберите производителя" />
-      </Form.Item>
-      <Form.Item name="supplierId" label="Поставщик" rules={[{ required: true, message: 'Выберите поставщика' }]}>
-        <Select options={supplierOptions} placeholder="Выберите поставщика" />
-      </Form.Item>
-      <Form.Item name="price" label="Цена" rules={[{ required: true, message: 'Укажите цену' }]}>
-        <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-      </Form.Item>
-      <Form.Item name="unit" label="Единица измерения" rules={[{ required: true, message: 'Укажите единицу' }]}>
-        <Input />
-      </Form.Item>
-      <Form.Item name="stockQty" label="Количество на складе" rules={[{ required: true, message: 'Укажите остаток' }]}>
-        <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-      </Form.Item>
-      <Form.Item name="discountPercent" label="Действующая скидка (%)" rules={[{ required: true, message: 'Укажите скидку' }]}>
-        <InputNumber min={0} max={100} precision={0} style={{ width: '100%' }} />
-      </Form.Item>
-      <Form.Item name="photo" label="Имя файла фото">
-        <Input placeholder="Например, 1.jpg" />
-      </Form.Item>
-    </Space>
-  )
 
   return (
     <Card
@@ -406,32 +290,40 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
             <Input
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
-              onPressEnter={applySearch}
-              placeholder="Поиск по товару, категории, описанию, поставщику..."
+              placeholder="Поиск по товару, категории, описанию, поставщику, производителю..."
+              allowClear
             />
-            <Button onClick={applySearch} type="primary">
-              Найти
-            </Button>
             <Select
               allowClear
               value={query.categoryId}
               options={categoryOptions}
               placeholder="Категория"
-              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, categoryId: value }))}
+              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, categoryId: toOptionalNumber(value) }))}
             />
             <Select
               allowClear
               value={query.supplierId}
               options={supplierOptions}
               placeholder="Поставщик"
-              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, supplierId: value }))}
+              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, supplierId: toOptionalNumber(value) }))}
             />
             <Select
               allowClear
               value={query.manufacturerId}
               options={manufacturerOptions}
               placeholder="Производитель"
-              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, manufacturerId: value }))}
+              onChange={(value) =>
+                setQuery((prev) => ({ ...prev, page: 1, manufacturerId: toOptionalNumber(value) }))
+              }
+            />
+            <Select
+              value={discountRange}
+              options={DISCOUNT_RANGE_OPTIONS}
+              onChange={(value: DiscountRangeValue) => {
+                setDiscountRange(value)
+                const mapped = mapDiscountRange(value)
+                setQuery((prev) => ({ ...prev, page: 1, ...mapped }))
+              }}
             />
             <Select
               value={query.sortBy}
@@ -446,19 +338,21 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
               ]}
               onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, sortDir: value }))}
             />
-            <Checkbox
-              checked={Boolean(query.inStockOnly)}
-              onChange={(event) => setQuery((prev) => ({ ...prev, page: 1, inStockOnly: event.target.checked || undefined }))}
-            >
-              Только в наличии
-            </Checkbox>
+            <Segmented
+              options={[
+                { label: 'Все товары', value: 'all' },
+                { label: 'Только в наличии', value: 'stock' },
+              ]}
+              value={query.inStockOnly ? 'stock' : 'all'}
+              onChange={(value) => setQuery((prev) => ({ ...prev, page: 1, inStockOnly: value === 'stock' || undefined }))}
+            />
             <Button onClick={resetFilters}>Сбросить</Button>
           </div>
         ) : null}
 
         {canManage ? (
           <Flex justify="end">
-            <Button type="primary" onClick={openCreateModal}>
+            <Button type="primary" onClick={onAddProduct}>
               Добавить товар
             </Button>
           </Flex>
@@ -471,7 +365,19 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
             {items.map((product) => {
               const hasDiscount = product.discountPercent > 0
               return (
-                <div key={product.article} className={rowClassName(product)}>
+                <div
+                  key={product.article}
+                  className={rowClassName(product)}
+                  onClick={() => canManage && onEditProduct?.(product)}
+                  role={canManage ? 'button' : undefined}
+                  tabIndex={canManage ? 0 : -1}
+                  onKeyDown={(event) => {
+                    if (canManage && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault()
+                      onEditProduct?.(product)
+                    }
+                  }}
+                >
                   <div className="product-photo-cell">
                     <Image
                       src={imageSourceByArticle[product.article] ?? getImageSrc(product.photo)}
@@ -516,10 +422,23 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
                     </div>
                     {canManage ? (
                       <Space size={8} className="product-actions">
-                        <Button size="small" onClick={() => openEditModal(product)}>
+                        <Button
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onEditProduct?.(product)
+                          }}
+                        >
                           Редактировать
                         </Button>
-                        <Button size="small" danger onClick={() => setDeletingProduct(product)}>
+                        <Button
+                          size="small"
+                          danger
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setDeletingProduct(product)
+                          }}
+                        >
                           Удалить
                         </Button>
                       </Space>
@@ -546,39 +465,6 @@ export function ProductList({ roleCode, title, showBackButton = false, onBack }:
           />
         </Flex>
       </Space>
-
-      <Modal
-        title="Добавление товара"
-        open={addOpen}
-        onOk={() => void handleCreateSubmit()}
-        onCancel={() => setAddOpen(false)}
-        okText="Сохранить"
-        cancelText="Отмена"
-        confirmLoading={submitLoading}
-        destroyOnHidden
-      >
-        <Form form={addForm} layout="vertical" preserve={false}>
-          {renderFormContent(true)}
-        </Form>
-      </Modal>
-
-      <Modal
-        title="Редактирование товара"
-        open={Boolean(editingProduct)}
-        onOk={() => void handleEditSubmit()}
-        onCancel={() => setEditingProduct(null)}
-        okText="Сохранить"
-        cancelText="Отмена"
-        confirmLoading={submitLoading}
-        destroyOnHidden
-      >
-        <Form form={editForm} layout="vertical" preserve={false}>
-          <Form.Item name="article" label="Артикул">
-            <Input disabled />
-          </Form.Item>
-          {renderFormContent(false)}
-        </Form>
-      </Modal>
 
       <Modal
         title="Удаление товара"

@@ -1,4 +1,4 @@
-import { Pool } from 'pg'
+import { Pool, type PoolClient } from 'pg'
 
 let pool: Pool | null = null
 
@@ -43,7 +43,7 @@ export type ProductLookupItem = {
 }
 
 export type ProductDto = {
-  article: string
+  article?: string
   name: string
   unit: string
   price: number
@@ -123,6 +123,12 @@ function toNullableTrimmed(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 function mapSortColumn(sortBy: ProductSortBy | undefined): string {
   switch (sortBy) {
     case 'price':
@@ -162,7 +168,7 @@ async function getProductLookups() {
   }
 }
 
-async function getProductByArticle(article: string): Promise<ProductListItem | null> {
+export async function getProductByArticle(article: string): Promise<ProductListItem | null> {
   const client = await getPool().connect()
   try {
     const result = await client.query<{
@@ -315,22 +321,25 @@ export async function listProducts(options: ProductListOptions = {}): Promise<Pr
     values.push(`%${search}%`)
     const param = `$${values.length}`
     conditions.push(
-      `(p.article ILIKE ${param} OR p.name ILIKE ${param} OR COALESCE(p.description, '') ILIKE ${param} OR s.name ILIKE ${param} OR m.name ILIKE ${param} OR pc.name ILIKE ${param})`,
+      `(p.article ILIKE ${param} OR p.name ILIKE ${param} OR p.unit ILIKE ${param} OR COALESCE(p.description, '') ILIKE ${param} OR s.name ILIKE ${param} OR m.name ILIKE ${param} OR pc.name ILIKE ${param})`,
     )
   }
 
-  if (typeof options.categoryId === 'number') {
-    values.push(options.categoryId)
+  const categoryId = toOptionalNumber(options.categoryId)
+  if (typeof categoryId === 'number') {
+    values.push(categoryId)
     conditions.push(`p.category_id = $${values.length}`)
   }
 
-  if (typeof options.supplierId === 'number') {
-    values.push(options.supplierId)
+  const supplierId = toOptionalNumber(options.supplierId)
+  if (typeof supplierId === 'number') {
+    values.push(supplierId)
     conditions.push(`p.supplier_id = $${values.length}`)
   }
 
-  if (typeof options.manufacturerId === 'number') {
-    values.push(options.manufacturerId)
+  const manufacturerId = toOptionalNumber(options.manufacturerId)
+  if (typeof manufacturerId === 'number') {
+    values.push(manufacturerId)
     conditions.push(`p.manufacturer_id = $${values.length}`)
   }
 
@@ -432,8 +441,18 @@ export async function listProducts(options: ProductListOptions = {}): Promise<Pr
   }
 }
 
-function sanitizeProductInput(payload: ProductDto): ProductDto {
-  const article = payload.article.trim()
+async function generateNextArticle(client: Pool | PoolClient): Promise<string> {
+  // We derive next numeric ID from any digits in existing article values to satisfy "ID +1".
+  const result = await client.query<{ max_id: number }>(
+    `SELECT COALESCE(MAX(NULLIF(regexp_replace(article, '\\D', '', 'g'), '')::int), 0) AS max_id
+     FROM products`,
+  )
+  const nextValue = (result.rows[0]?.max_id ?? 0) + 1
+  return `AUTO-${nextValue}`
+}
+
+function sanitizeProductInput(payload: ProductDto, articleOverride?: string): ProductDto {
+  const article = (articleOverride ?? payload.article ?? '').trim()
   const name = payload.name.trim()
   const unit = payload.unit.trim()
   const price = Number(payload.price)
@@ -469,9 +488,10 @@ function sanitizeProductInput(payload: ProductDto): ProductDto {
 }
 
 export async function createProduct(payload: ProductDto): Promise<ProductListItem> {
-  const product = sanitizeProductInput(payload)
   const client = await getPool().connect()
   try {
+    const generatedArticle = payload.article?.trim() ? undefined : await generateNextArticle(client)
+    const product = sanitizeProductInput(payload, generatedArticle)
     await client.query(
       `INSERT INTO products (
           article, name, unit, price, supplier_id, manufacturer_id, category_id,
@@ -492,19 +512,18 @@ export async function createProduct(payload: ProductDto): Promise<ProductListIte
         product.photo,
       ],
     )
+    const created = await getProductByArticle(product.article)
+    if (!created) {
+      throw new Error('Product was created but could not be loaded')
+    }
+    return created
   } finally {
     client.release()
   }
-
-  const created = await getProductByArticle(product.article)
-  if (!created) {
-    throw new Error('Product was created but could not be loaded')
-  }
-  return created
 }
 
 export async function updateProduct(article: string, payload: ProductDto): Promise<ProductListItem | null> {
-  const product = sanitizeProductInput({ ...payload, article })
+  const product = sanitizeProductInput(payload, article)
   const client = await getPool().connect()
   try {
     const result = await client.query(

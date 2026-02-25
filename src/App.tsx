@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Alert, App as AntApp, Button, Card, Flex, Form, Input, Space, Tag, Typography } from 'antd'
 import { login as loginApi } from './api/client'
 import { ProductList } from './components/ProductList'
-import type { UserRoleCode } from './types/electron-api'
+import { ProductForm } from './components/ProductForm'
+import type { ProductItem, UserRoleCode } from './types/electron-api'
 import './App.css'
 
 type AuthUser = NonNullable<Awaited<ReturnType<typeof loginApi>>['user']>
 type ScreenMode = 'auth' | 'guest'
+type ProductScreenMode = 'list' | 'create' | 'edit'
 
 function normalizeRoleCode(roleCode: string): UserRoleCode {
   if (roleCode === 'admin' || roleCode === 'manager' || roleCode === 'client') {
@@ -18,6 +20,9 @@ function normalizeRoleCode(roleCode: string): UserRoleCode {
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [screenMode, setScreenMode] = useState<ScreenMode>('auth')
+  const [productScreenMode, setProductScreenMode] = useState<ProductScreenMode>('list')
+  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null)
+  const [refreshToken, setRefreshToken] = useState(0)
   const [loginValue, setLoginValue] = useState('')
   const [passwordValue, setPasswordValue] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
@@ -36,6 +41,8 @@ function App() {
 
       setAuthUser(response.user)
       setScreenMode('auth')
+      setProductScreenMode('list')
+      setEditingProduct(null)
       setPasswordValue('')
       message.success(`Вход выполнен: ${response.user.fullName}`)
     } finally {
@@ -46,6 +53,8 @@ function App() {
   const handleLogout = () => {
     setAuthUser(null)
     setScreenMode('auth')
+    setProductScreenMode('list')
+    setEditingProduct(null)
     setLoginValue('')
     setPasswordValue('')
     setAuthError(null)
@@ -104,6 +113,52 @@ function App() {
     return null
   }
 
+  const roleCode = normalizeRoleCode(authUser.role.code)
+
+  if (productScreenMode === 'create') {
+    return (
+      <div className="app-shell">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Title level={3} style={{ marginBottom: 0 }}>
+            Добавление товара
+          </Typography.Title>
+          <ProductForm
+            mode="create"
+            roleCode={roleCode}
+            onBack={() => setProductScreenMode('list')}
+            onSaved={() => {
+              setProductScreenMode('list')
+              setRefreshToken((prev) => prev + 1)
+            }}
+          />
+        </Space>
+      </div>
+    )
+  }
+
+  if (productScreenMode === 'edit') {
+    return (
+      <div className="app-shell">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Title level={3} style={{ marginBottom: 0 }}>
+            Редактирование товара
+          </Typography.Title>
+          <ProductForm
+            mode="edit"
+            roleCode={roleCode}
+            product={editingProduct}
+            onBack={() => setProductScreenMode('list')}
+            onSaved={() => {
+              setProductScreenMode('list')
+              setEditingProduct(null)
+              setRefreshToken((prev) => prev + 1)
+            }}
+          />
+        </Space>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -118,7 +173,15 @@ function App() {
           </Space>
         </Flex>
         <Typography.Text type="secondary">Функционал зависит от роли пользователя.</Typography.Text>
-        <ProductList roleCode={normalizeRoleCode(authUser.role.code)} />
+        <ProductList
+          roleCode={roleCode}
+          refreshToken={refreshToken}
+          onAddProduct={() => setProductScreenMode('create')}
+          onEditProduct={(product) => {
+            setEditingProduct(product)
+            setProductScreenMode('edit')
+          }}
+        />
       </Space>
     </div>
   )
