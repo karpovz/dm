@@ -1,0 +1,10 @@
+.app-shell {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.login-card {
+  max-width: 420px;
+  margin: 48px auto 0;
+}
