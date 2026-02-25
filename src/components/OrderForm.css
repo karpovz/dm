@@ -1,0 +1,11 @@
+.order-form-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .order-form-dates {
+    grid-template-columns: 1fr;
+  }
+}

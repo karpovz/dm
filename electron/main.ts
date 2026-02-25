@@ -7,13 +7,20 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import {
   checkDbHealth,
   closePool,
+  createOrder,
   createProduct,
+  deleteOrder,
   deleteProduct,
   findAuthUser,
+  getOrderById,
   getProductByArticle,
+  listOrders,
   listProducts,
   listPublicTables,
+  updateOrder,
   updateProduct,
+  type OrderDto,
+  type OrderListOptions,
   type ProductDto,
   type ProductListOptions,
 } from './db/postgres'
@@ -25,6 +32,12 @@ let mainWindow: BrowserWindow | null = null
 function ensureAdmin(actorRoleCode?: string) {
   if (actorRoleCode !== 'admin') {
     throw new Error('Это действие доступно только администратору')
+  }
+}
+
+function ensureManagerOrAdmin(actorRoleCode?: string) {
+  if (actorRoleCode !== 'admin' && actorRoleCode !== 'manager') {
+    throw new Error('Это действие доступно только менеджеру или администратору')
   }
 }
 
@@ -257,6 +270,119 @@ function registerIpcHandlers(): void {
       }
     },
   )
+
+  ipcMain.handle(
+    'orders:list',
+    async (
+      _event,
+      payload?: {
+        options?: OrderListOptions
+        actorRoleCode?: string
+      },
+    ) => {
+      try {
+        ensureManagerOrAdmin(payload?.actorRoleCode)
+        const result = await listOrders(payload?.options ?? {})
+        return { ok: true, ...result }
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Failed to load orders',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'orders:get',
+    async (
+      _event,
+      payload?: {
+        id?: number
+        actorRoleCode?: string
+      },
+    ) => {
+      const id = Number(payload?.id)
+      if (!Number.isInteger(id) || id <= 0) {
+        return { ok: false, message: 'Order ID is required' }
+      }
+      try {
+        ensureManagerOrAdmin(payload?.actorRoleCode)
+        const item = await getOrderById(id)
+        if (!item) {
+          return { ok: false, message: 'Order not found' }
+        }
+        return { ok: true, item }
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Failed to load order',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle('orders:create', async (_event, payload?: { order?: OrderDto; actorRoleCode?: string }) => {
+    try {
+      ensureAdmin(payload?.actorRoleCode)
+      if (!payload?.order) {
+        return { ok: false, message: 'Order data is required' }
+      }
+      const item = await createOrder(payload.order)
+      return { ok: true, item }
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : 'Failed to create order',
+      }
+    }
+  })
+
+  ipcMain.handle(
+    'orders:update',
+    async (_event, payload?: { id?: number; order?: OrderDto; actorRoleCode?: string }) => {
+      const id = Number(payload?.id)
+      if (!Number.isInteger(id) || id <= 0) {
+        return { ok: false, message: 'Order ID is required' }
+      }
+      try {
+        ensureAdmin(payload?.actorRoleCode)
+        if (!payload?.order) {
+          return { ok: false, message: 'Order data is required' }
+        }
+        const item = await updateOrder(id, payload.order)
+        if (!item) {
+          return { ok: false, message: 'Order not found' }
+        }
+        return { ok: true, item }
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Failed to update order',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle('orders:delete', async (_event, payload?: { id?: number; actorRoleCode?: string }) => {
+    const id = Number(payload?.id)
+    if (!Number.isInteger(id) || id <= 0) {
+      return { ok: false, message: 'Order ID is required' }
+    }
+    try {
+      ensureAdmin(payload?.actorRoleCode)
+      const deleted = await deleteOrder(id)
+      if (!deleted) {
+        return { ok: false, message: 'Order not found' }
+      }
+      return { ok: true }
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : 'Failed to delete order',
+      }
+    }
+  })
 }
 
 app.whenReady().then(() => {

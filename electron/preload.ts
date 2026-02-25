@@ -179,6 +179,116 @@ const api = {
       message?: string
       photo?: string
     }>,
+  listOrders: (
+    options?: {
+      page?: number
+      pageSize?: number
+      search?: string
+      status?: string
+      pickupPointId?: number
+      userId?: number
+      sortBy?: 'id' | 'orderDate' | 'deliveryDate' | 'status'
+      sortDir?: 'asc' | 'desc'
+    },
+    actorRoleCode?: string,
+  ) =>
+    ipcRenderer.invoke('orders:list', { options: options ?? {}, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+      items?: Array<{
+        id: number
+        orderDate: string
+        deliveryDate: string
+        pickupPointId: number
+        pickupPointLabel: string
+        userId: number
+        userFullName: string
+        pickupCode: string
+        status: string
+      }>
+      total?: number
+      page?: number
+      pageSize?: number
+      lookups?: {
+        statuses: string[]
+        pickupPoints: Array<{ id: number; label: string }>
+        users: Array<{ id: number; fullName: string }>
+      }
+    }>,
+  getOrder: (id: number, actorRoleCode?: string) =>
+    ipcRenderer.invoke('orders:get', { id, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+      item?: {
+        id: number
+        orderDate: string
+        deliveryDate: string
+        pickupPointId: number
+        pickupPointLabel: string
+        userId: number
+        userFullName: string
+        pickupCode: string
+        status: string
+      }
+    }>,
+  createOrder: (
+    order: {
+      orderDate: string
+      deliveryDate: string
+      pickupPointId: number
+      userId: number
+      pickupCode: string
+      status: string
+    },
+    actorRoleCode?: string,
+  ) =>
+    ipcRenderer.invoke('orders:create', { order, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+      item?: {
+        id: number
+        orderDate: string
+        deliveryDate: string
+        pickupPointId: number
+        pickupPointLabel: string
+        userId: number
+        userFullName: string
+        pickupCode: string
+        status: string
+      }
+    }>,
+  updateOrder: (
+    id: number,
+    order: {
+      orderDate: string
+      deliveryDate: string
+      pickupPointId: number
+      userId: number
+      pickupCode: string
+      status: string
+    },
+    actorRoleCode?: string,
+  ) =>
+    ipcRenderer.invoke('orders:update', { id, order, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+      item?: {
+        id: number
+        orderDate: string
+        deliveryDate: string
+        pickupPointId: number
+        pickupPointLabel: string
+        userId: number
+        userFullName: string
+        pickupCode: string
+        status: string
+      }
+    }>,
+  deleteOrder: (id: number, actorRoleCode?: string) =>
+    ipcRenderer.invoke('orders:delete', { id, actorRoleCode }) as Promise<{
+      ok: boolean
+      message?: string
+    }>,
 }
 
 contextBridge.exposeInMainWorld('api', api)

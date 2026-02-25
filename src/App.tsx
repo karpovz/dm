@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { Alert, App as AntApp, Button, Card, Flex, Form, Input, Space, Tag, Typography } from 'antd'
 import { login as loginApi } from './api/client'
+import { OrderForm } from './components/OrderForm'
+import { OrdersList } from './components/OrdersList'
 import { ProductList } from './components/ProductList'
 import { ProductForm } from './components/ProductForm'
-import type { ProductItem, UserRoleCode } from './types/electron-api'
+import type { OrderItem, ProductItem, UserRoleCode } from './types/electron-api'
 import './App.css'
 
 type AuthUser = NonNullable<Awaited<ReturnType<typeof loginApi>>['user']>
 type ScreenMode = 'auth' | 'guest'
+type SectionMode = 'products' | 'orders'
 type ProductScreenMode = 'list' | 'create' | 'edit'
+type OrderScreenMode = 'list' | 'create' | 'edit'
 
 function normalizeRoleCode(roleCode: string): UserRoleCode {
   if (roleCode === 'admin' || roleCode === 'manager' || roleCode === 'client') {
@@ -20,9 +24,13 @@ function normalizeRoleCode(roleCode: string): UserRoleCode {
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [screenMode, setScreenMode] = useState<ScreenMode>('auth')
+  const [sectionMode, setSectionMode] = useState<SectionMode>('products')
   const [productScreenMode, setProductScreenMode] = useState<ProductScreenMode>('list')
+  const [orderScreenMode, setOrderScreenMode] = useState<OrderScreenMode>('list')
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null)
+  const [editingOrder, setEditingOrder] = useState<OrderItem | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
+  const [ordersRefreshToken, setOrdersRefreshToken] = useState(0)
   const [loginValue, setLoginValue] = useState('')
   const [passwordValue, setPasswordValue] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
@@ -49,8 +57,11 @@ function App() {
 
       setAuthUser(response.user)
       setScreenMode('auth')
+      setSectionMode('products')
       setProductScreenMode('list')
+      setOrderScreenMode('list')
       setEditingProduct(null)
+      setEditingOrder(null)
       setPasswordValue('')
       message.success(`Вход выполнен: ${response.user.fullName}`)
     } finally {
@@ -61,8 +72,11 @@ function App() {
   const handleLogout = () => {
     setAuthUser(null)
     setScreenMode('auth')
+    setSectionMode('products')
     setProductScreenMode('list')
+    setOrderScreenMode('list')
     setEditingProduct(null)
+    setEditingOrder(null)
     setLoginValue('')
     setPasswordValue('')
     setAuthError(null)
@@ -129,6 +143,53 @@ function App() {
   }
 
   const roleCode = normalizeRoleCode(authUser.role.code)
+  const canOpenOrders = roleCode === 'admin' || roleCode === 'manager'
+
+  if (sectionMode === 'orders' && canOpenOrders && orderScreenMode === 'create') {
+    return (
+      <div className="app-shell">
+        {brandHeader}
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Title level={3} style={{ marginBottom: 0 }}>
+            Добавление заказа
+          </Typography.Title>
+          <OrderForm
+            mode="create"
+            roleCode={roleCode}
+            onBack={() => setOrderScreenMode('list')}
+            onSaved={() => {
+              setOrderScreenMode('list')
+              setOrdersRefreshToken((prev) => prev + 1)
+            }}
+          />
+        </Space>
+      </div>
+    )
+  }
+
+  if (sectionMode === 'orders' && canOpenOrders && orderScreenMode === 'edit') {
+    return (
+      <div className="app-shell">
+        {brandHeader}
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Title level={3} style={{ marginBottom: 0 }}>
+            Редактирование заказа
+          </Typography.Title>
+          <OrderForm
+            mode="edit"
+            roleCode={roleCode}
+            order={editingOrder}
+            onBack={() => setOrderScreenMode('list')}
+            onSaved={() => {
+              setOrderScreenMode('list')
+              setEditingOrder(null)
+              setOrdersRefreshToken((prev) => prev + 1)
+            }}
+          />
+        </Space>
+      </div>
+    )
+  }
 
   if (productScreenMode === 'create') {
     return (
@@ -182,24 +243,58 @@ function App() {
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Flex align="center" justify="space-between" gap={12} wrap>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>
-            Каталог товаров
+            {sectionMode === 'orders' && canOpenOrders ? 'Заказы' : 'Каталог товаров'}
           </Typography.Title>
           <Space size={8} wrap>
             <Tag>{authUser.fullName}</Tag>
             <Tag color="blue">Роль: {authUser.role.name}</Tag>
+            <Button
+              type={sectionMode === 'products' ? 'primary' : 'default'}
+              onClick={() => {
+                setSectionMode('products')
+                setProductScreenMode('list')
+                setEditingProduct(null)
+              }}
+            >
+              Товары
+            </Button>
+            {canOpenOrders ? (
+              <Button
+                type={sectionMode === 'orders' ? 'primary' : 'default'}
+                onClick={() => {
+                  setSectionMode('orders')
+                  setOrderScreenMode('list')
+                  setEditingOrder(null)
+                }}
+              >
+                Заказы
+              </Button>
+            ) : null}
             <Button onClick={handleLogout}>Выйти</Button>
           </Space>
         </Flex>
         <Typography.Text type="secondary">Функционал зависит от роли пользователя.</Typography.Text>
-        <ProductList
-          roleCode={roleCode}
-          refreshToken={refreshToken}
-          onAddProduct={() => setProductScreenMode('create')}
-          onEditProduct={(product) => {
-            setEditingProduct(product)
-            setProductScreenMode('edit')
-          }}
-        />
+        {sectionMode === 'orders' && canOpenOrders ? (
+          <OrdersList
+            roleCode={roleCode}
+            refreshToken={ordersRefreshToken}
+            onAddOrder={() => setOrderScreenMode('create')}
+            onEditOrder={(order) => {
+              setEditingOrder(order)
+              setOrderScreenMode('edit')
+            }}
+          />
+        ) : (
+          <ProductList
+            roleCode={roleCode}
+            refreshToken={refreshToken}
+            onAddProduct={() => setProductScreenMode('create')}
+            onEditProduct={(product) => {
+              setEditingProduct(product)
+              setProductScreenMode('edit')
+            }}
+          />
+        )}
       </Space>
     </div>
   )

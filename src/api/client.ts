@@ -44,3 +44,33 @@ export async function saveProductImage(
 ) {
   return window.api.saveProductImage(payload, actorRoleCode)
 }
+
+export async function listOrders(
+  options?: import('../types/electron-api').OrderListRequest,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.listOrders(options, actorRoleCode)
+}
+
+export async function getOrder(id: number, actorRoleCode?: import('../types/electron-api').UserRoleCode) {
+  return window.api.getOrder(id, actorRoleCode)
+}
+
+export async function createOrder(
+  order: import('../types/electron-api').OrderWritePayload,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.createOrder(order, actorRoleCode)
+}
+
+export async function updateOrder(
+  id: number,
+  order: import('../types/electron-api').OrderWritePayload,
+  actorRoleCode?: import('../types/electron-api').UserRoleCode,
+) {
+  return window.api.updateOrder(id, order, actorRoleCode)
+}
+
+export async function deleteOrder(id: number, actorRoleCode?: import('../types/electron-api').UserRoleCode) {
+  return window.api.deleteOrder(id, actorRoleCode)
+}

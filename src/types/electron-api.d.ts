@@ -81,6 +81,50 @@ export interface ProductImageUploadPayload {
   previousPhoto?: string | null
 }
 
+export type OrderStatus = 'Новый' | 'Завершен' | string
+
+export interface PickupPointLookupItem {
+  id: number
+  label: string
+}
+
+export interface UserLookupItem {
+  id: number
+  fullName: string
+}
+
+export interface OrderItem {
+  id: number
+  orderDate: string
+  deliveryDate: string
+  pickupPointId: number
+  pickupPointLabel: string
+  userId: number
+  userFullName: string
+  pickupCode: string
+  status: OrderStatus
+}
+
+export interface OrderWritePayload {
+  orderDate: string
+  deliveryDate: string
+  pickupPointId: number
+  userId: number
+  pickupCode: string
+  status: OrderStatus
+}
+
+export interface OrderListRequest {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: OrderStatus
+  pickupPointId?: number
+  userId?: number
+  sortBy?: 'id' | 'orderDate' | 'deliveryDate' | 'status'
+  sortDir?: 'asc' | 'desc'
+}
+
 export interface ProductListRequest {
   page?: number
   pageSize?: number
@@ -132,6 +176,37 @@ interface ProductImageUploadResponse {
   photo?: string
 }
 
+interface OrderListResponse {
+  ok: boolean
+  message?: string
+  items?: OrderItem[]
+  total?: number
+  page?: number
+  pageSize?: number
+  lookups?: {
+    statuses: OrderStatus[]
+    pickupPoints: PickupPointLookupItem[]
+    users: UserLookupItem[]
+  }
+}
+
+interface OrderWriteResponse {
+  ok: boolean
+  message?: string
+  item?: OrderItem
+}
+
+interface OrderGetResponse {
+  ok: boolean
+  message?: string
+  item?: OrderItem
+}
+
+interface OrderDeleteResponse {
+  ok: boolean
+  message?: string
+}
+
 interface ElectronApi {
   checkHealth: () => Promise<HealthResponse>
   listTables: () => Promise<TablesResponse>
@@ -142,6 +217,11 @@ interface ElectronApi {
   updateProduct: (article: string, product: ProductWritePayload, actorRoleCode?: UserRoleCode) => Promise<ProductWriteResponse>
   deleteProduct: (article: string, actorRoleCode?: UserRoleCode) => Promise<ProductDeleteResponse>
   saveProductImage: (payload: ProductImageUploadPayload, actorRoleCode?: UserRoleCode) => Promise<ProductImageUploadResponse>
+  listOrders: (options?: OrderListRequest, actorRoleCode?: UserRoleCode) => Promise<OrderListResponse>
+  getOrder: (id: number, actorRoleCode?: UserRoleCode) => Promise<OrderGetResponse>
+  createOrder: (order: OrderWritePayload, actorRoleCode?: UserRoleCode) => Promise<OrderWriteResponse>
+  updateOrder: (id: number, order: OrderWritePayload, actorRoleCode?: UserRoleCode) => Promise<OrderWriteResponse>
+  deleteOrder: (id: number, actorRoleCode?: UserRoleCode) => Promise<OrderDeleteResponse>
 }
 
 declare global {

@@ -86,6 +86,64 @@ export type ProductListResult = {
   }
 }
 
+export type OrderSortBy = 'id' | 'orderDate' | 'deliveryDate' | 'status'
+
+export type OrderSortDir = 'asc' | 'desc'
+
+export type OrderListOptions = {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: string
+  pickupPointId?: number
+  userId?: number
+  sortBy?: OrderSortBy
+  sortDir?: OrderSortDir
+}
+
+export type PickupPointLookupItem = {
+  id: number
+  label: string
+}
+
+export type UserLookupItem = {
+  id: number
+  fullName: string
+}
+
+export type OrderDto = {
+  orderDate: string
+  deliveryDate: string
+  pickupPointId: number
+  userId: number
+  pickupCode: string
+  status: string
+}
+
+export type OrderListItem = {
+  id: number
+  orderDate: string
+  deliveryDate: string
+  pickupPointId: number
+  pickupPointLabel: string
+  userId: number
+  userFullName: string
+  pickupCode: string
+  status: string
+}
+
+export type OrderListResult = {
+  items: OrderListItem[]
+  total: number
+  page: number
+  pageSize: number
+  lookups: {
+    statuses: string[]
+    pickupPoints: PickupPointLookupItem[]
+    users: UserLookupItem[]
+  }
+}
+
 function toNumber(value: string | undefined, fallback: number): number {
   if (!value) return fallback
   const parsed = Number(value)
@@ -146,6 +204,127 @@ function mapSortColumn(sortBy: ProductSortBy | undefined): string {
     case 'name':
     default:
       return 'p.name'
+  }
+}
+
+function mapOrderSortColumn(sortBy: OrderSortBy | undefined): string {
+  switch (sortBy) {
+    case 'orderDate':
+      return 'o.order_date'
+    case 'deliveryDate':
+      return 'o.delivery_date'
+    case 'status':
+      return 'o.status'
+    case 'id':
+    default:
+      return 'o.id'
+  }
+}
+
+function normalizeDateInput(value: string, fieldName: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error(`Поле "${fieldName}" обязательно`)
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed
+  }
+
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Поле "${fieldName}" должно содержать корректную дату`)
+  }
+  return parsed.toISOString().slice(0, 10)
+}
+
+function sanitizeOrderInput(payload: OrderDto): OrderDto {
+  const orderDate = normalizeDateInput(payload.orderDate, 'Дата заказа')
+  const deliveryDate = normalizeDateInput(payload.deliveryDate, 'Дата выдачи')
+  const pickupPointId = Number(payload.pickupPointId)
+  const userId = Number(payload.userId)
+  const pickupCode = payload.pickupCode.trim()
+  const status = payload.status.trim()
+
+  if (!Number.isInteger(pickupPointId) || pickupPointId <= 0) {
+    throw new Error('Пункт выдачи обязателен')
+  }
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('Клиент обязателен')
+  }
+  if (!pickupCode) {
+    throw new Error('Код выдачи обязателен')
+  }
+  if (!status) {
+    throw new Error('Статус заказа обязателен')
+  }
+  if (deliveryDate < orderDate) {
+    throw new Error('Дата выдачи не может быть раньше даты заказа')
+  }
+
+  return {
+    orderDate,
+    deliveryDate,
+    pickupPointId,
+    userId,
+    pickupCode,
+    status,
+  }
+}
+
+function mapOrderRow(row: {
+  id: number
+  order_date: string
+  delivery_date: string
+  pickup_point_id: number
+  pickup_point_label: string
+  user_id: number
+  user_full_name: string
+  pickup_code: string
+  status: string
+}): OrderListItem {
+  return {
+    id: row.id,
+    orderDate: row.order_date,
+    deliveryDate: row.delivery_date,
+    pickupPointId: row.pickup_point_id,
+    pickupPointLabel: row.pickup_point_label,
+    userId: row.user_id,
+    userFullName: row.user_full_name,
+    pickupCode: row.pickup_code,
+    status: row.status,
+  }
+}
+
+async function getOrderLookups(client: PoolClient) {
+  const [statusResult, pickupPointResult, usersResult] = await Promise.all([
+    client.query<{ status: string }>(
+      `SELECT DISTINCT status
+       FROM orders
+       WHERE TRIM(status) <> ''
+       ORDER BY status`,
+    ),
+    client.query<{ id: number; label: string }>(
+      `SELECT id,
+              CONCAT(postal_code, ', ', city, ', ', street, COALESCE(', ' || NULLIF(house, ''), '')) AS label
+       FROM pickup_points
+       ORDER BY id`,
+    ),
+    client.query<{ id: number; full_name: string }>(
+      `SELECT id, full_name
+       FROM users
+       ORDER BY full_name`,
+    ),
+  ])
+
+  const statuses = statusResult.rows.map((row) => row.status)
+  if (!statuses.includes('Новый')) statuses.unshift('Новый')
+  if (!statuses.includes('Завершен')) statuses.push('Завершен')
+
+  return {
+    statuses,
+    pickupPoints: pickupPointResult.rows.map((row) => ({ id: row.id, label: row.label })),
+    users: usersResult.rows.map((row) => ({ id: row.id, fullName: row.full_name })),
   }
 }
 
@@ -568,6 +747,201 @@ export async function deleteProduct(article: string): Promise<boolean> {
   const client = await getPool().connect()
   try {
     const result = await client.query('DELETE FROM products WHERE article = $1', [article])
+    return (result.rowCount ?? 0) > 0
+  } finally {
+    client.release()
+  }
+}
+
+export async function getOrderById(id: number): Promise<OrderListItem | null> {
+  const client = await getPool().connect()
+  try {
+    const result = await client.query<{
+      id: number
+      order_date: string
+      delivery_date: string
+      pickup_point_id: number
+      pickup_point_label: string
+      user_id: number
+      user_full_name: string
+      pickup_code: string
+      status: string
+    }>(
+      `SELECT o.id,
+              o.order_date::text AS order_date,
+              o.delivery_date::text AS delivery_date,
+              o.pickup_point_id,
+              CONCAT(pp.postal_code, ', ', pp.city, ', ', pp.street, COALESCE(', ' || NULLIF(pp.house, ''), '')) AS pickup_point_label,
+              o.user_id,
+              u.full_name AS user_full_name,
+              o.pickup_code,
+              o.status
+       FROM orders o
+       INNER JOIN pickup_points pp ON pp.id = o.pickup_point_id
+       INNER JOIN users u ON u.id = o.user_id
+       WHERE o.id = $1
+       LIMIT 1`,
+      [id],
+    )
+
+    const row = result.rows[0]
+    return row ? mapOrderRow(row) : null
+  } finally {
+    client.release()
+  }
+}
+
+export async function listOrders(options: OrderListOptions = {}): Promise<OrderListResult> {
+  const page = clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER)
+  const pageSize = clampInteger(options.pageSize, 10, 1, 100)
+  const sortColumn = mapOrderSortColumn(options.sortBy)
+  const sortDirection = options.sortDir === 'desc' ? 'DESC' : 'ASC'
+  const offset = (page - 1) * pageSize
+
+  const values: Array<string | number> = []
+  const conditions: string[] = []
+  const search = toNullableTrimmed(options.search)
+  if (search) {
+    values.push(`%${search}%`)
+    const param = `$${values.length}`
+    conditions.push(
+      `(o.id::text ILIKE ${param}
+        OR o.pickup_code ILIKE ${param}
+        OR o.status ILIKE ${param}
+        OR u.full_name ILIKE ${param}
+        OR pp.city ILIKE ${param}
+        OR pp.street ILIKE ${param})`,
+    )
+  }
+
+  const status = toNullableTrimmed(options.status)
+  if (status) {
+    values.push(status)
+    conditions.push(`o.status = $${values.length}`)
+  }
+
+  const pickupPointId = toOptionalNumber(options.pickupPointId)
+  if (typeof pickupPointId === 'number') {
+    values.push(pickupPointId)
+    conditions.push(`o.pickup_point_id = $${values.length}`)
+  }
+
+  const userId = toOptionalNumber(options.userId)
+  if (typeof userId === 'number') {
+    values.push(userId)
+    conditions.push(`o.user_id = $${values.length}`)
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const dataSql = `SELECT o.id,
+                          o.order_date::text AS order_date,
+                          o.delivery_date::text AS delivery_date,
+                          o.pickup_point_id,
+                          CONCAT(pp.postal_code, ', ', pp.city, ', ', pp.street, COALESCE(', ' || NULLIF(pp.house, ''), '')) AS pickup_point_label,
+                          o.user_id,
+                          u.full_name AS user_full_name,
+                          o.pickup_code,
+                          o.status
+                   FROM orders o
+                   INNER JOIN pickup_points pp ON pp.id = o.pickup_point_id
+                   INNER JOIN users u ON u.id = o.user_id
+                   ${whereClause}
+                   ORDER BY ${sortColumn} ${sortDirection}, o.id ASC
+                   LIMIT $${values.length + 1}
+                   OFFSET $${values.length + 2}`
+
+  const countSql = `SELECT COUNT(*)::int AS total
+                    FROM orders o
+                    INNER JOIN pickup_points pp ON pp.id = o.pickup_point_id
+                    INNER JOIN users u ON u.id = o.user_id
+                    ${whereClause}`
+
+  const client = await getPool().connect()
+  try {
+    const [rowsResult, countResult, lookups] = await Promise.all([
+      client.query<{
+        id: number
+        order_date: string
+        delivery_date: string
+        pickup_point_id: number
+        pickup_point_label: string
+        user_id: number
+        user_full_name: string
+        pickup_code: string
+        status: string
+      }>(dataSql, [...values, pageSize, offset]),
+      client.query<{ total: number }>(countSql, values),
+      getOrderLookups(client),
+    ])
+
+    return {
+      items: rowsResult.rows.map((row) => mapOrderRow(row)),
+      total: countResult.rows[0]?.total ?? 0,
+      page,
+      pageSize,
+      lookups,
+    }
+  } finally {
+    client.release()
+  }
+}
+
+async function generateNextOrderId(client: PoolClient): Promise<number> {
+  const result = await client.query<{ max_id: number }>('SELECT COALESCE(MAX(id), 0) AS max_id FROM orders')
+  return (result.rows[0]?.max_id ?? 0) + 1
+}
+
+export async function createOrder(payload: OrderDto): Promise<OrderListItem> {
+  const order = sanitizeOrderInput(payload)
+  const client = await getPool().connect()
+  try {
+    const id = await generateNextOrderId(client)
+    await client.query(
+      `INSERT INTO orders (id, order_date, delivery_date, pickup_point_id, user_id, pickup_code, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, order.orderDate, order.deliveryDate, order.pickupPointId, order.userId, order.pickupCode, order.status],
+    )
+    const created = await getOrderById(id)
+    if (!created) {
+      throw new Error('Заказ создан, но не найден при повторном чтении')
+    }
+    return created
+  } finally {
+    client.release()
+  }
+}
+
+export async function updateOrder(id: number, payload: OrderDto): Promise<OrderListItem | null> {
+  const order = sanitizeOrderInput(payload)
+  const client = await getPool().connect()
+  try {
+    const result = await client.query(
+      `UPDATE orders
+       SET order_date = $2,
+           delivery_date = $3,
+           pickup_point_id = $4,
+           user_id = $5,
+           pickup_code = $6,
+           status = $7
+       WHERE id = $1`,
+      [id, order.orderDate, order.deliveryDate, order.pickupPointId, order.userId, order.pickupCode, order.status],
+    )
+
+    if (result.rowCount === 0) {
+      return null
+    }
+  } finally {
+    client.release()
+  }
+
+  return getOrderById(id)
+}
+
+export async function deleteOrder(id: number): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    const result = await client.query('DELETE FROM orders WHERE id = $1', [id])
     return (result.rowCount ?? 0) > 0
   } finally {
     client.release()
