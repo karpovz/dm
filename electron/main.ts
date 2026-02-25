@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
 import crypto from 'node:crypto'
 import dotenv from 'dotenv'
 import { app, BrowserWindow, ipcMain } from 'electron'
@@ -43,12 +44,23 @@ function parseImageDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
   return { buffer: Buffer.from(raw, 'base64'), ext }
 }
 
+function getWindowIconPath(): string | undefined {
+  const candidatePaths = [
+    path.join(process.cwd(), 'public', 'images', 'icon.png'),
+    path.join(app.getAppPath(), 'public', 'images', 'icon.png'),
+  ]
+  return candidatePaths.find((candidatePath) => fsSync.existsSync(candidatePath))
+}
+
 function createMainWindow(): void {
   const isDev = Boolean(process.env.VITE_DEV_SERVER_URL)
+  const iconPath = getWindowIconPath()
 
   mainWindow = new BrowserWindow({
+    title: 'Велосипед Драйв',
     width: 1200,
     height: 800,
+    ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

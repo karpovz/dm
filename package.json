@@ -47,7 +47,7 @@
   },
   "build": {
     "appId": "com.template.electron.react.pg",
-    "productName": "ElectronReactPgTemplate",
+    "productName": "Велосипед Драйв",
     "directories": {
       "output": "release"
     },
@@ -61,6 +61,7 @@
       "main": "main.cjs"
     },
     "win": {
+      "icon": "public/images/icon.ico",
       "target": [
         "nsis",
         "portable"

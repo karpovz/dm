@@ -7,7 +7,7 @@
 
 .product-row {
   border: 2px solid #202020;
-  background: #ffffff;
+  background: var(--app-bg-main);
   display: grid;
   grid-template-columns: 180px 1fr 170px;
   min-height: 170px;
@@ -22,11 +22,15 @@
 }
 
 .product-row.high-discount {
-  background: #483d8b;
+  background: #483D8B;
 }
 
 .product-row.high-discount .ant-typography {
   color: #ffffff;
+}
+
+.product-row.high-discount .base-price-discounted {
+  color: #ffd7dc;
 }
 
 .product-photo-cell {

@@ -28,6 +28,14 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const { message } = AntApp.useApp()
+  const brandHeader = (
+    <div className="app-brand-bar" aria-label="Бренд приложения">
+      <img className="app-brand-logo" src="images/icon.png" alt="Логотип компании Велосипед Драйв" />
+      <Typography.Title level={4} className="app-brand-title">
+        Велосипед Драйв
+      </Typography.Title>
+    </div>
+  )
 
   const handleLogin = async () => {
     setAuthLoading(true)
@@ -63,6 +71,7 @@ function App() {
   if (!authUser && screenMode === 'guest') {
     return (
       <div className="app-shell">
+        {brandHeader}
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>
             Просмотр каталога товаров
@@ -76,35 +85,41 @@ function App() {
   if (!authUser && screenMode === 'auth') {
     return (
       <div className="app-shell">
-        <Card title="Авторизация" className="login-card">
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            {authError ? <Alert type="error" message={authError} showIcon /> : null}
-            <Form layout="vertical" onFinish={() => void handleLogin()}>
-              <Form.Item label="Логин" required>
-                <Input
-                  value={loginValue}
-                  onChange={(event) => setLoginValue(event.target.value)}
-                  autoComplete="username"
-                  placeholder="Введите логин"
-                />
-              </Form.Item>
-              <Form.Item label="Пароль" required style={{ marginBottom: 12 }}>
-                <Input.Password
-                  value={passwordValue}
-                  onChange={(event) => setPasswordValue(event.target.value)}
-                  autoComplete="current-password"
-                  placeholder="Введите пароль"
-                />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={authLoading} block>
-                Войти
+        {brandHeader}
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Typography.Title level={3} style={{ marginBottom: 0 }}>
+            Авторизация
+          </Typography.Title>
+          <Card title="Форма входа" className="login-card">
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {authError ? <Alert type="error" message={authError} showIcon /> : null}
+              <Form layout="vertical" onFinish={() => void handleLogin()}>
+                <Form.Item label="Логин" required>
+                  <Input
+                    value={loginValue}
+                    onChange={(event) => setLoginValue(event.target.value)}
+                    autoComplete="username"
+                    placeholder="Введите логин"
+                  />
+                </Form.Item>
+                <Form.Item label="Пароль" required style={{ marginBottom: 12 }}>
+                  <Input.Password
+                    value={passwordValue}
+                    onChange={(event) => setPasswordValue(event.target.value)}
+                    autoComplete="current-password"
+                    placeholder="Введите пароль"
+                  />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={authLoading} block>
+                  Войти
+                </Button>
+              </Form>
+              <Button onClick={() => setScreenMode('guest')} block>
+                Продолжить как гость
               </Button>
-            </Form>
-            <Button onClick={() => setScreenMode('guest')} block>
-              Продолжить как гость
-            </Button>
-          </Space>
-        </Card>
+            </Space>
+          </Card>
+        </Space>
       </div>
     )
   }
@@ -118,6 +133,7 @@ function App() {
   if (productScreenMode === 'create') {
     return (
       <div className="app-shell">
+        {brandHeader}
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>
             Добавление товара
@@ -139,6 +155,7 @@ function App() {
   if (productScreenMode === 'edit') {
     return (
       <div className="app-shell">
+        {brandHeader}
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>
             Редактирование товара
@@ -161,6 +178,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      {brandHeader}
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Flex align="center" justify="space-between" gap={12} wrap>
           <Typography.Title level={3} style={{ marginBottom: 0 }}>

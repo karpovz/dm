@@ -6,7 +6,16 @@ import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConfigProvider>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#4B0082',
+          colorInfo: '#4B0082',
+          colorBgBase: '#FFFFFF',
+          fontFamily: 'ArialCustom, Arial, Helvetica, sans-serif',
+        },
+      }}
+    >
       <AntApp>
         <App />
       </AntApp>
