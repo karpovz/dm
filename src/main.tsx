@@ -4,6 +4,7 @@ import { App as AntApp, ConfigProvider } from 'antd'
 import './index.css'
 import App from './App.tsx'
 
+// Корневой контейнер гарантирован шаблоном index.html, поэтому используем non-null assertion.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConfigProvider

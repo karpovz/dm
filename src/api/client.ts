@@ -11,6 +11,7 @@ export async function login(loginValue: string, password: string) {
 }
 
 export async function listProducts(options?: import('../types/electron-api').ProductListRequest) {
+  // Тонкий прокси к preload API: UI не обращается к Electron bridge напрямую.
   return window.api.listProducts(options)
 }
 

@@ -57,6 +57,7 @@ const DISCOUNT_RANGE_OPTIONS: Array<{ value: DiscountRangeValue; label: string }
 ]
 
 function mapDiscountRange(range: DiscountRangeValue): Pick<ProductListRequest, 'discountFrom' | 'discountTo'> {
+  // UI хранит диапазон как строку, а API принимает числовые границы.
   switch (range) {
     case '0-11.99':
       return { discountFrom: 0, discountTo: 11.99 }
@@ -104,7 +105,7 @@ function buildImageCandidates(photo: string | null): string[] {
 
   const name = normalized.slice(0, dotIdx)
   const ext = normalized.slice(dotIdx + 1)
-  // Some source files have inconsistent extension casing, so we try all variants before fallback.
+  // В исходных данных расширения иногда в разном регистре, пробуем все варианты.
   const upperExt = ext.toUpperCase()
   const lowerExt = ext.toLowerCase()
 
@@ -156,6 +157,7 @@ export function ProductList({
 
   const [deletingProduct, setDeletingProduct] = useState<ProductItem | null>(null)
   const [submitLoading, setSubmitLoading] = useState(false)
+  // Кешируем рабочий src по article, чтобы onError мог переключать fallback адреса.
   const [imageSourceByArticle, setImageSourceByArticle] = useState<Record<string, string>>({})
 
   const canUseFilters = roleCode === 'manager' || roleCode === 'admin'
@@ -168,6 +170,7 @@ export function ProductList({
       const request: ProductListRequest = canUseFilters
         ? query
         : {
+            // Для клиента/гостя игнорируем расширенные фильтры и фиксируем безопасную сортировку.
             page: query.page,
             pageSize: query.pageSize,
             sortBy: 'name',
@@ -224,6 +227,7 @@ export function ProductList({
 
   useEffect(() => {
     if (!canUseFilters) return
+    // Debounce поиска, чтобы не дергать API на каждый символ.
     const timeoutId = window.setTimeout(() => {
       setQuery((prev) => ({
         ...prev,
@@ -241,6 +245,7 @@ export function ProductList({
       page: 1,
       pageSize: prev.pageSize,
       sortBy: prev.sortBy,
+      // После сброса возвращаем единое направление сортировки.
       sortDir: 'asc',
       categoryId: undefined,
       supplierId: undefined,
@@ -372,6 +377,7 @@ export function ProductList({
                   role={canManage ? 'button' : undefined}
                   tabIndex={canManage ? 0 : -1}
                   onKeyDown={(event) => {
+                    // Поддержка Enter/Space делает карточку доступной как button-элемент.
                     if (canManage && (event.key === 'Enter' || event.key === ' ')) {
                       event.preventDefault()
                       onEditProduct?.(product)
@@ -385,6 +391,7 @@ export function ProductList({
                       preview={false}
                       className="product-photo"
                       onError={() => {
+                        // Последовательно переходим к следующему кандидату изображения.
                         const candidates = buildImageCandidates(product.photo)
                         const current = imageSourceByArticle[product.article] ?? getImageSrc(product.photo)
                         const index = candidates.indexOf(current)
